@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.angular/
+bin/
+obj/
+*.db
+*.db-shm
+*.db-wal
+backend/wwwroot/
+.vs/
+.vscode/
+*.user

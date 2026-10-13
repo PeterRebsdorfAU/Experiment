@@ -1,0 +1,248 @@
+<main class="page page-wide">
+  <header class="admin-header">
+    <span class="study-title">Eksperiment · Admin</span>
+    @if (key()) {
+      <button class="btn btn-ghost btn-sm" (click)="logout()">Log ud</button>
+    }
+  </header>
+
+  @if (!key()) {
+    <section class="card narrow">
+      <h1>Log ind</h1>
+      <label class="field-label" for="pw">Admin-adgangskode</label>
+      <input id="pw" class="input" type="password" [(ngModel)]="password" (keydown.enter)="login()" autofocus />
+      @if (loginError()) {
+        <div class="field-error">{{ loginError() }}</div>
+      }
+      <div class="actions">
+        <button class="btn btn-primary" (click)="login()">Log ind</button>
+      </div>
+    </section>
+  } @else {
+    <nav class="tabs">
+      <button [class.active]="tab() === 'overview'" (click)="tab.set('overview')">Oversigt</button>
+      <button [class.active]="tab() === 'questions'" (click)="tab.set('questions')">Spørgsmål ({{ questions().length }})</button>
+      <button [class.active]="tab() === 'data'" (click)="tab.set('data')">Data &amp; eksport</button>
+    </nav>
+
+    @if (overview(); as o) {
+      @switch (tab()) {
+        @case ('overview') {
+          <section class="card status-card" [class.open]="o.settings.studyOpen">
+            <div>
+              <div class="status-label">Status</div>
+              <div class="status-value">
+                @if (o.settings.studyOpen) {
+                  <span class="dot-live"></span> Åben – deltagere kan starte
+                } @else {
+                  Lukket – deltagere venter på start
+                }
+              </div>
+            </div>
+            @if (o.settings.studyOpen) {
+              <button class="btn btn-danger" (click)="setOpen(false)">Stop eksperimentet</button>
+            } @else {
+              <button class="btn btn-start" (click)="setOpen(true)">▶ Start eksperimentet</button>
+            }
+          </section>
+
+          <div class="stats">
+            <div class="stat">
+              <div class="stat-label">Høj overvågning</div>
+              <div class="stat-value">{{ o.counts.high.assigned }}</div>
+              <div class="stat-sub">{{ o.counts.high.completed }} færdige · {{ o.counts.high.inProgress }} i gang</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Lav overvågning</div>
+              <div class="stat-value">{{ o.counts.low.assigned }}</div>
+              <div class="stat-sub">{{ o.counts.low.completed }} færdige · {{ o.counts.low.inProgress }} i gang</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Ikke fordelt endnu</div>
+              <div class="stat-value">{{ o.counts.notAssigned }}</div>
+              <div class="stat-sub">på samtykke/instruktion</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Lodtræknings-e-mails</div>
+              <div class="stat-value">{{ o.counts.lotteryEntries }}</div>
+              <div class="stat-sub">{{ o.counts.events }} hændelser logget</div>
+            </div>
+          </div>
+
+          <section class="card">
+            <h2>Links</h2>
+            <div class="link-row">
+              <span class="link-label">Deltager-link</span>
+              <code>{{ participantLink }}</code>
+              <button class="btn btn-ghost btn-sm" (click)="copy(participantLink)">Kopiér</button>
+            </div>
+            <div class="link-row">
+              <span class="link-label">Test: høj</span>
+              <code>{{ testLink('high') }}</code>
+              <a class="btn btn-ghost btn-sm" [href]="testLink('high')" target="_blank">Åbn</a>
+            </div>
+            <div class="link-row">
+              <span class="link-label">Test: lav</span>
+              <code>{{ testLink('low') }}</code>
+              <a class="btn btn-ghost btn-sm" [href]="testLink('low')" target="_blank">Åbn</a>
+            </div>
+            <p class="muted small">Test-links virker også når eksperimentet er lukket. Test-deltagere markeres med is_test = 1 og tæller ikke med i fordelingen.</p>
+          </section>
+
+          <section class="card">
+            <div class="row-between">
+              <h2>Deltagere</h2>
+              <span class="muted small">Opdateres automatisk hvert 5. sekund</span>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr><th>ID</th><th>Gruppe</th><th>Trin</th><th>Startet</th><th>Færdig</th><th class="num">AI-klik</th><th class="num">Rigtige</th></tr>
+                </thead>
+                <tbody>
+                  @for (p of o.participants; track p.code) {
+                    <tr [class.test-row]="p.isTest">
+                      <td><code>{{ p.code }}</code></td>
+                      <td>
+                        @if (p.group) {
+                          <span class="pill" [class.pill-high]="p.group === 'high'">{{ p.group === 'high' ? 'Høj' : 'Lav' }}</span>
+                        } @else { – }
+                      </td>
+                      <td>{{ stepLabels[p.step] ?? p.step }}@if (p.step === 'task') { ({{ p.taskIndex + 1 }}/{{ p.total }}) }</td>
+                      <td>{{ p.consentAt | date: 'dd/MM HH:mm:ss' }}</td>
+                      <td>{{ p.finishedAt ? (p.finishedAt | date: 'HH:mm:ss') : '–' }}</td>
+                      <td class="num">{{ p.aiClicks }}</td>
+                      <td class="num">{{ p.correct }}</td>
+                    </tr>
+                  } @empty {
+                    <tr><td colspan="7" class="muted">Ingen deltagere endnu.</td></tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </section>
+        }
+
+        @case ('questions') {
+          <section class="card">
+            <div class="row-between">
+              <h2>Opgaver</h2>
+              <button class="btn btn-primary btn-sm" (click)="newQuestion()">+ Tilføj spørgsmål</button>
+            </div>
+            <p class="muted small">
+              Deltagerne får opgaverne i denne rækkefølge. Hver deltager låses til de spørgsmål, der fandtes da de startede –
+              ændringer her påvirker kun nye deltagere.
+            </p>
+
+            @for (q of questions(); track q.id; let i = $index) {
+              <div class="q-item">
+                <div class="q-order">
+                  <button class="icon-btn" [disabled]="i === 0" (click)="move(i, -1)" title="Flyt op">▲</button>
+                  <span>{{ i + 1 }}</span>
+                  <button class="icon-btn" [disabled]="i === questions().length - 1" (click)="move(i, 1)" title="Flyt ned">▼</button>
+                </div>
+                <div class="q-body">
+                  <div class="q-title">{{ q.title || '(uden titel)' }}</div>
+                  <div class="q-text">{{ q.text }}</div>
+                  <div class="q-meta">
+                    Korrekt svar: <b>{{ q.correctAnswer ?? '–' }}</b> (± {{ q.tolerance }}) · AI's svar: <b>{{ q.aiAnswerValue ?? '–' }}</b>
+                  </div>
+                </div>
+                <div class="q-actions">
+                  <button class="btn btn-ghost btn-sm" (click)="edit(q)">Redigér</button>
+                  <button class="btn btn-ghost btn-sm danger" (click)="deleteQuestion(q)">Slet</button>
+                </div>
+              </div>
+            } @empty {
+              <p class="muted">Ingen spørgsmål. Tilføj mindst ét, før eksperimentet startes.</p>
+            }
+          </section>
+
+          @if (editing(); as q) {
+            <div class="modal-backdrop" (click)="editing.set(null)">
+              <section class="card modal" (click)="$event.stopPropagation()">
+                <h2>{{ q.id ? 'Redigér spørgsmål' : 'Nyt spørgsmål' }}</h2>
+                <label class="field-label">Titel (vises over opgaven, valgfri)</label>
+                <input class="input" [(ngModel)]="q.title" />
+
+                <label class="field-label">Opgavetekst</label>
+                <textarea class="input" rows="5" [(ngModel)]="q.text"></textarea>
+
+                <div class="grid-2">
+                  <div>
+                    <label class="field-label">Korrekt svar (tal)</label>
+                    <input class="input" type="number" step="any" [(ngModel)]="q.correctAnswer" />
+                  </div>
+                  <div>
+                    <label class="field-label">Tolerance (± tilladt afvigelse)</label>
+                    <input class="input" type="number" step="any" min="0" [(ngModel)]="q.tolerance" />
+                  </div>
+                </div>
+
+                <label class="field-label">AI-svar (teksten der vises ved "Get AI help")</label>
+                <textarea class="input" rows="6" [(ngModel)]="q.aiResponse"></textarea>
+
+                <label class="field-label">AI'ens talsvar (bruges til at se, om deltageren kopierede AI'en)</label>
+                <input class="input" type="number" step="any" [(ngModel)]="q.aiAnswerValue" />
+                <p class="muted small">Kan sættes forskelligt fra det korrekte svar, hvis AI'en bevidst skal svare forkert.</p>
+
+                <div class="actions">
+                  <button class="btn btn-ghost" (click)="editing.set(null)">Annullér</button>
+                  <button class="btn btn-primary" [disabled]="busy()" (click)="saveQuestion()">Gem</button>
+                </div>
+              </section>
+            </div>
+          }
+        }
+
+        @case ('data') {
+          <section class="card">
+            <h2>Eksport</h2>
+            <div class="export-grid">
+              <button class="export" (click)="download('all.xlsx')">
+                <b>Excel – alle data</b><span>Deltagere, opgaver og hændelser i ét regneark (uden e-mails)</span>
+              </button>
+              <button class="export" (click)="download('participants.csv')">
+                <b>Deltagere (CSV)</b><span>Én række pr. deltager: gruppe, tider, manipulationstjek, baggrund, totaler</span>
+              </button>
+              <button class="export" (click)="download('tasks.csv')">
+                <b>Opgaver (CSV)</b><span>Én række pr. deltager × opgave: AI-klik, første klik, svar, korrekt, kopieret</span>
+              </button>
+              <button class="export" (click)="download('events.csv')">
+                <b>Hændelseslog (CSV)</b><span>Rå log: hvert klik, tastetryk, kopiering og fanebytte med tidsstempel</span>
+              </button>
+              <button class="export export-sensitive" (click)="download('lottery.csv')">
+                <b>Lodtræknings-e-mails (CSV)</b><span>Separat og uden kobling til svarene. Persondata – opbevar sikkert</span>
+              </button>
+            </div>
+            <p class="muted small">Tidspunkter er dansk tid. CSV bruger komma som skilletegn og punktum som decimaltegn.</p>
+          </section>
+
+          <section class="card">
+            <h2>Lodtrækning</h2>
+            <label class="field-label">Antal rigtige svar der kræves for at deltage</label>
+            <div class="inline-form">
+              <input class="input input-sm" type="number" min="0" [(ngModel)]="minCorrect" />
+              <button class="btn btn-primary btn-sm" (click)="saveMinCorrect()">Gem</button>
+            </div>
+            <p class="muted small">Ved hver e-mail gemmes kun om kravet var opfyldt (kolonnen eligible) – ikke hvem der svarede hvad.</p>
+          </section>
+
+          <section class="card danger-zone">
+            <h2>Slet deltagerdata</h2>
+            <p class="muted small">Fx efter en pilottest. Spørgsmål og indstillinger bevares. Kan ikke fortrydes.</p>
+            <label class="radio-row"><input type="checkbox" [(ngModel)]="resetLottery" /> Slet også lodtræknings-e-mails</label>
+            <div class="inline-form">
+              <input class="input input-sm" placeholder="Skriv SLET" [(ngModel)]="resetConfirm" />
+              <button class="btn btn-danger btn-sm" [disabled]="resetConfirm !== 'SLET'" (click)="reset()">Slet data</button>
+            </div>
+          </section>
+        }
+      }
+    }
+  }
+
+  @if (message()) {
+    <div class="toast toast-ok">{{ message() }}</div>
+  }
+</main>

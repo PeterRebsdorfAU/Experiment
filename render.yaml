@@ -1,0 +1,20 @@
+# Render Blueprint: Render Dashboard -> New -> Blueprint -> peg på dette repo.
+# Databasen ligger på Neon. Indsæt connection string og admin-adgangskode i dashboardet bagefter.
+services:
+  - type: web
+    name: ai-eksperiment
+    runtime: docker
+    # "free" går i dvale efter 15 min uden trafik (≈1 min opstart). Skift til "starter" (~$7/md.)
+    # i de uger eksperimentet kører, så 50 samtidige deltagere aldrig rammer en sovende server.
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    envVars:
+      # Neon -> Connection string -> vælg "Pooled connection". URI-formatet (postgresql://...) virker direkte.
+      - key: ConnectionStrings__Default
+        sync: false
+      # Adgangskoden til /admin. Vælg en lang, tilfældig adgangskode.
+      - key: Admin__Password
+        sync: false

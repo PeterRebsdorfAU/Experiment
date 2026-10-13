@@ -1,0 +1,190 @@
+@let s = state();
+@let monitored = s?.group === 'high' && s?.step === 'task';
+
+@if (monitored) {
+  <app-monitoring-overlay [startedAt]="s!.tasksStartedAt" [clockOffset]="clockOffset()" />
+}
+
+<main class="page" [class.page-monitored]="monitored">
+  <header class="study-header">
+    <span class="study-title">{{ t.studyTitle }}</span>
+    @if (s?.isTest) {
+      <span class="test-badge">TEST · {{ s!.group === 'high' ? 'høj' : 'lav' }} overvågning</span>
+    }
+  </header>
+
+  @if (screen() === 'error') {
+    <section class="card">
+      <p>{{ t.common.error }}</p>
+    </section>
+  } @else if (s) {
+    @switch (s.step) {
+      @case ('instructions') {
+        <section class="card">
+          <h1>{{ t.instructions.title }}</h1>
+          <p class="prose">{{ t.instructions.body }}</p>
+          <div class="actions">
+            <button class="btn btn-primary" [disabled]="busy()" (click)="next('instructions-done')">{{ t.common.next }}</button>
+          </div>
+        </section>
+      }
+
+      @case ('notice') {
+        <section class="card">
+          <h1>{{ t.notice.title }}</h1>
+          <p class="notice-text">{{ s.group === 'high' ? t.notice.high : t.notice.low }}</p>
+          <div class="actions">
+            <button class="btn btn-primary" [disabled]="busy()" (click)="next('notice-done')">{{ t.notice.continue }}</button>
+          </div>
+        </section>
+      }
+
+      @case ('task') {
+        @if (s.task; as task) {
+          <section class="card">
+            <div class="task-counter">{{ t.task.counter(task.position, task.total) }}</div>
+            <div class="progress"><div class="progress-bar" [style.width.%]="(task.position - 1) / task.total * 100"></div></div>
+            @if (task.title) {
+              <h1>{{ task.title }}</h1>
+            }
+            <p class="prose task-text">{{ task.text }}</p>
+
+            <label class="field-label" for="answer">{{ t.task.answerLabel }}</label>
+            <input
+              id="answer"
+              class="input"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              [placeholder]="t.task.answerPlaceholder"
+              [(ngModel)]="answer"
+              (input)="onAnswerInput()"
+              (paste)="onPaste($event)"
+              (keydown.enter)="submitAnswer()"
+            />
+            @if (answerError()) {
+              <div class="field-error">{{ t.task.answerRequired }}</div>
+            }
+
+            <div class="ai-box">
+              <button class="btn btn-ai" [disabled]="aiThinking() || busy()" (click)="getAiHelp()">
+                <span class="ai-spark">✦</span> {{ t.task.aiButton }}
+              </button>
+              @if (aiThinking()) {
+                <div class="ai-panel">
+                  <div class="ai-panel-title">{{ t.task.aiTitle }}</div>
+                  <div class="ai-thinking">{{ t.task.aiThinking }}<span class="dots"><i></i><i></i><i></i></span></div>
+                </div>
+              } @else if (aiResponse()) {
+                <div class="ai-panel" (copy)="onCopyAi()">
+                  <div class="ai-panel-title">{{ t.task.aiTitle }}</div>
+                  <p class="prose ai-text">{{ aiResponse() }}</p>
+                </div>
+              }
+            </div>
+
+            <div class="actions actions-split">
+              <span class="hint">{{ t.task.noBack }}</span>
+              <button class="btn btn-primary" [disabled]="busy() || aiThinking()" (click)="submitAnswer()">{{ t.common.next }}</button>
+            </div>
+          </section>
+        }
+      }
+
+      @case ('manipulation') {
+        <section class="card">
+          <h1>{{ t.manipulation.title }}</h1>
+          <fieldset class="fieldset">
+            <legend class="question">{{ t.manipulation.question }}</legend>
+            <div class="scale">
+              @for (n of scale; track n) {
+                <label class="scale-option" [class.selected]="manipulation === n">
+                  <input type="radio" name="manip" [value]="n" [(ngModel)]="manipulation" />
+                  <span>{{ n }}</span>
+                </label>
+              }
+            </div>
+            <div class="scale-labels"><span>1 = {{ t.manipulation.low }}</span><span>7 = {{ t.manipulation.high }}</span></div>
+          </fieldset>
+          <div class="actions">
+            <button class="btn btn-primary" [disabled]="busy() || manipulation === null"
+              (click)="next('manipulation', { value: manipulation })">{{ t.common.next }}</button>
+          </div>
+        </section>
+      }
+
+      @case ('background') {
+        <section class="card">
+          <fieldset class="fieldset">
+            <legend class="question">{{ t.background.genderQuestion }}</legend>
+            @for (o of t.background.genderOptions; track o) {
+              <label class="radio-row"><input type="radio" name="gender" [value]="o" [(ngModel)]="gender" /> {{ o }}</label>
+            }
+          </fieldset>
+          <fieldset class="fieldset">
+            <legend class="question">{{ t.background.aiUsageQuestion }}</legend>
+            @for (o of t.background.aiUsageOptions; track o) {
+              <label class="radio-row"><input type="radio" name="aiusage" [value]="o" [(ngModel)]="aiUsage" /> {{ o }}</label>
+            }
+          </fieldset>
+          <div class="actions">
+            <button class="btn btn-primary" [disabled]="busy() || !gender || !aiUsage" (click)="submitBackground()">{{ t.common.next }}</button>
+          </div>
+        </section>
+      }
+
+      @case ('debrief') {
+        <section class="card">
+          <h1>{{ t.debrief.title }}</h1>
+          <p class="prose">{{ t.debrief.body }}</p>
+        </section>
+        <section class="card">
+          <h2>{{ t.debrief.lotteryTitle }}</h2>
+          @if (s.lotterySubmitted) {
+            <p>{{ t.debrief.lotteryThanks }}</p>
+          } @else {
+            <p class="prose muted">{{ t.debrief.lotteryBody }}</p>
+            <div class="inline-form">
+              <input class="input" type="email" autocomplete="email" placeholder="navn@eksempel.dk" [(ngModel)]="email"
+                (keydown.enter)="submitLottery()" />
+              <button class="btn btn-primary" [disabled]="busy()" (click)="submitLottery()">{{ t.debrief.lotteryButton }}</button>
+            </div>
+            @if (emailError()) {
+              <div class="field-error">Skriv en gyldig e-mail.</div>
+            }
+            <p class="muted small">{{ t.debrief.closeHint }}</p>
+          }
+        </section>
+        @if (s.isTest) {
+          <button class="btn btn-ghost" (click)="restartTest()">Start ny test</button>
+        }
+      }
+    }
+  } @else {
+    @switch (screen()) {
+      @case ('waiting') {
+        <section class="card center">
+          <div class="spinner"></div>
+          <h1>{{ t.waiting.title }}</h1>
+          <p class="muted">{{ t.waiting.body }}</p>
+        </section>
+      }
+      @case ('consent') {
+        <section class="card">
+          <h1>{{ t.consent.title }}</h1>
+          <p class="prose">{{ t.consent.body }}</p>
+          <div class="actions">
+            <button class="btn btn-primary" [disabled]="busy()" (click)="acceptConsent()">{{ t.consent.accept }}</button>
+          </div>
+        </section>
+      }
+      @default {
+        <section class="card center"><div class="spinner"></div></section>
+      }
+    }
+  }
+
+  @if (retrying()) {
+    <div class="toast">{{ t.common.networkRetry }}</div>
+  }
+</main>
