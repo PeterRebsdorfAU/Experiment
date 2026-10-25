@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { Api, StateDto } from './api';
 import { EventLog } from './event-log';
 import { MonitoringOverlay } from './monitoring-overlay';
-import { TEXTS } from './texts';
+import { TextStore } from './text-store';
 
 type LocalScreen = 'loading' | 'waiting' | 'consent' | 'error';
 
@@ -18,7 +18,12 @@ export class Participant implements OnInit, OnDestroy {
   private readonly api = inject(Api);
   private readonly events = inject(EventLog);
 
-  protected readonly t = TEXTS;
+  private readonly textStore = inject(TextStore);
+
+  /** Teksterne inkl. ændringer fra admin-siden. */
+  protected get t() {
+    return this.textStore.texts();
+  }
   protected readonly retrying = this.api.retrying;
   protected readonly screen = signal<LocalScreen>('loading');
   protected readonly state = signal<StateDto | null>(null);
@@ -47,6 +52,7 @@ export class Participant implements OnInit, OnDestroy {
   async ngOnInit(): Promise<void> {
     // Forhindr at browserens tilbage-knap forlader forløbet.
     history.pushState(null, '', location.href);
+    await this.textStore.load();
     try {
       const pid = this.readPid();
       if (pid) {

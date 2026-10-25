@@ -12,7 +12,8 @@ Webapp til eksperimentet: *Bruger folk AI mindre, når de tror, de bliver overv�
 1. *(Venteside, hvis eksperimentet ikke er startet. Den går automatisk videre, når admin trykker Start.)*
 2. Samtykke → "Jeg accepterer"
 3. Fælles instruktion
-4. **Tilfældig fordeling på serveren** (blokrandomisering, blokke af 4 = altid 2+2)
+4. **Tilfældig fordeling på serveren**: ny deltager kommer i den mindste gruppe, og ved lige mange trækkes der lod.
+   Grupperne er derfor **aldrig mere end 1 fra hinanden**, også efter sletning af deltagere.
 5. Gruppebesked: *høj* = "Dine svar bliver optaget …" / *lav* = "Kun dine endelige svar bliver indsamlet."
 6. Opgaverne, én pr. skærm (tekst, talsvar, **Get AI help**, Næste). Man kan ikke gå tilbage, heller ikke ved genindlæsning eller med browserens tilbage-knap.
 7. Manipulationstjek (1–7)
@@ -39,13 +40,17 @@ Tidspunkter er dansk tid. Test-deltagere (fra test-links) har `is_test = 1` og b
 ## Admin-siden (`/admin`)
 
 - **▶ Start / Stop**: åbner og lukker for nye deltagere. Deltagere der er i gang, kan altid gøre det færdigt.
-- Live-tal pr. gruppe og liste over deltagere (opdateres hvert 5. sek.)
+- Live-tal og procentfordeling pr. gruppe og liste over deltagere (opdateres hvert 5. sek.)
+- **Slet** til højre på hver deltager: sletter deltagerens svar og hændelseslog. Fx en elev, der faldt fra
+  halvvejs; næste nye deltager kommer så i den gruppe, der mangler én.
 - **Spørgsmål**: tilføj, redigér, slet og ændr rækkefølge. Pr. spørgsmål: titel, tekst, korrekt svar, tolerance, AI-svartekst og AI'ens talsvar.
   Hver deltager låses til de spørgsmål, der fandtes, da de startede.
 - **Test-links** (`/?test=high` og `/?test=low`) til at prøve begge versioner, også når eksperimentet er lukket.
+- **Tekster**: samtykke, instruktion, gruppebeskeder, overvågnings-tekster, manipulationstjek og debriefing kan rettes
+  direkte på admin-siden. "Gendan standard" henter den oprindelige tekst.
 - Eksport, lodtrækningskrav og "Slet deltagerdata" (efter pilottest).
 
-Tekster til samtykke, instruktion, debriefing osv. rettes i [`frontend/src/app/texts.ts`](frontend/src/app/texts.ts).
+Standardteksterne står i [`frontend/src/app/texts.ts`](frontend/src/app/texts.ts). Rettelser fra admin gemmes i databasen og lægges ovenpå.
 
 ## Kør lokalt
 
@@ -71,7 +76,7 @@ Lokalt bruges filen `backend/experiment.db` (SQLite). Slet den for at starte hel
 
 ### Stabilitet ved 50 samtidige deltagere
 
-- Belastningen er lille (få forespørgsler pr. sekund). Testet lokalt med 50 samtidige starter uden fejl.
+- Belastningen er lille (få forespørgsler pr. sekund). Testet lokalt med 100 samtidige starter uden fejl (fordelt præcis 50/50).
 - **Renders gratis plan går i dvale** efter 15 min uden trafik, og opstart tager ~1 min. Brug enten **Starter-planen** i
   eksperimentperioden (skift `plan: free` til `plan: starter`), eller åbn admin-siden et par minutter før start.
 - Browseren prøver automatisk igen ved netværksfejl, og hændelser gemmes i kø i browseren, til de er sendt.

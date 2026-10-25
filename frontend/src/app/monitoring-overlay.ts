@@ -1,5 +1,5 @@
-import { Component, HostListener, OnDestroy, OnInit, input, signal } from '@angular/core';
-import { TEXTS } from './texts';
+import { Component, HostListener, OnDestroy, OnInit, inject, input, signal } from '@angular/core';
+import { TextStore } from './text-store';
 
 interface LoggedItem {
   id: number;
@@ -33,7 +33,11 @@ export class MonitoringOverlay implements OnInit, OnDestroy {
   /** Forskel mellem server- og klient-ur i ms. */
   readonly clockOffset = input(0);
 
-  protected readonly t = TEXTS.monitoring;
+  private readonly textStore = inject(TextStore);
+
+  protected get t() {
+    return this.textStore.texts().monitoring;
+  }
   protected readonly elapsed = signal('00:00:00');
   protected readonly items = signal<LoggedItem[]>([]);
   private timer: ReturnType<typeof setInterval> | null = null;

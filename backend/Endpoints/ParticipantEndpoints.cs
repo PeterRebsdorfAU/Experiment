@@ -36,6 +36,10 @@ public static partial class ParticipantEndpoints
             return Results.Ok(new { open = s.StudyOpen });
         });
 
+        // Tekster rettet i admin (kun ændrede; resten er standardteksterne i frontend).
+        api.MapGet("/texts", async (AppDb db) =>
+            Results.Ok(await db.TextSettings.AsNoTracking().ToDictionaryAsync(t => t.Key, t => t.Value)));
+
         // Oprettes når deltageren trykker "Jeg accepterer" på samtykkesiden.
         api.MapPost("/participants", async (StartRequest req, AppDb db) =>
         {

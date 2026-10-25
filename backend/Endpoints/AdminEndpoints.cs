@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using AiExperiment.Api.Data;
 using AiExperiment.Api.Services;
 using Microsoft.EntityFrameworkCore;
@@ -7,8 +8,11 @@ using Microsoft.EntityFrameworkCore;
 namespace AiExperiment.Api.Endpoints;
 
 /// <summary>Admin-API. Kræver headeren X-Admin-Key = adgangskoden fra konfigurationen (Admin:Password).</summary>
-public static class AdminEndpoints
+public static partial class AdminEndpoints
 {
+    [GeneratedRegex(@"^[a-zA-Z][a-zA-Z.]{0,63}$")]
+    private static partial Regex TextKeyRegex();
+
     public record SettingsDto(bool StudyOpen, int MinCorrectForLottery);
     public record QuestionDto(int Id, int SortOrder, string Title, string Text, decimal? CorrectAnswer,
         decimal Tolerance, string AiResponse, decimal? AiAnswerValue);
@@ -115,6 +119,41 @@ public static class AdminEndpoints
             var qs = await db.Questions.Where(q => ids.Contains(q.Id)).ToListAsync();
             for (var i = 0; i < ids.Length; i++)
                 if (qs.FirstOrDefault(q => q.Id == ids[i]) is { } q) q.SortOrder = i + 1;
+            await db.SaveChangesAsync();
+            return Results.NoContent();
+        });
+
+        // Gemmer ændrede tekster. En tom værdi (eller null) betyder "brug standardteksten igen".
+        admin.MapPut("/texts", async (Dictionary<string, string?> texts, AppDb db) =>
+        {
+            if (texts.Count > 60) return Results.BadRequest("For mange tekster.");
+            if (texts.Keys.Any(k => !TextKeyRegex().IsMatch(k))) return Results.BadRequest("Ugyldig tekst-nøgle.");
+            if (texts.Values.Any(v => v is { Length: > 20000 })) return Results.BadRequest("Teksten er for lang.");
+
+            var existing = await db.TextSettings.Where(t => texts.Keys.Contains(t.Key)).ToDictionaryAsync(t => t.Key);
+            foreach (var (key, value) in texts)
+            {
+                existing.TryGetValue(key, out var row);
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    if (row is not null) db.TextSettings.Remove(row);
+                }
+                else if (row is null) db.TextSettings.Add(new TextSetting { Key = key, Value = value });
+                else row.Value = value;
+            }
+            await db.SaveChangesAsync();
+            return Results.Ok(await db.TextSettings.AsNoTracking().ToDictionaryAsync(t => t.Key, t => t.Value));
+        });
+
+        // Sletter én deltager med svar og hændelseslog. Lodtræknings-e-mails kan ikke kobles til deltageren
+        // og påvirkes derfor ikke. Fordelingen tager højde for det: næste deltager går i den mindste gruppe.
+        admin.MapDelete("/participants/{code}", async (string code, AppDb db) =>
+        {
+            var p = await db.Participants.FirstOrDefaultAsync(x => x.Code == code);
+            if (p is null) return Results.NotFound();
+            await db.Events.Where(e => e.ParticipantId == p.Id).ExecuteDeleteAsync();
+            await db.TaskResponses.Where(t => t.ParticipantId == p.Id).ExecuteDeleteAsync();
+            db.Participants.Remove(p);
             await db.SaveChangesAsync();
             return Results.NoContent();
         });

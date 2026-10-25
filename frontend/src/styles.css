@@ -173,6 +173,13 @@ textarea.input { resize: vertical; line-height: 1.5; }
 .export span { color: var(--muted); font-size: 0.85rem; line-height: 1.4; }
 .export-sensitive { border-style: dashed; }
 .danger-zone { border-color: #f3c2bd; }
+.stat-share { font-size: 1rem; color: var(--muted); font-weight: 600; }
+.table td.row-action { text-align: right; width: 1%; padding-block: 4px; }
+.text-field + .text-field { margin-top: 4px; }
+.text-field-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.text-field-head .field-label { display: flex; align-items: center; gap: 8px; }
+.link-btn { font: inherit; font-size: 0.85rem; background: none; border: 0; color: var(--primary); cursor: pointer; padding: 0; }
+.link-btn:hover { text-decoration: underline; }
 
 @media (max-width: 560px) {
   .card { padding: 20px; }

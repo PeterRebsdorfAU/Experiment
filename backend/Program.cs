@@ -21,6 +21,7 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDb>();
     db.Database.EnsureCreated();
+    db.UpgradeSchema();
     Seed.Run(db);
 }
 

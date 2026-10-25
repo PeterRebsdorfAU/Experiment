@@ -22,6 +22,7 @@
     <nav class="tabs">
       <button [class.active]="tab() === 'overview'" (click)="tab.set('overview')">Oversigt</button>
       <button [class.active]="tab() === 'questions'" (click)="tab.set('questions')">Spørgsmål ({{ questions().length }})</button>
+      <button [class.active]="tab() === 'texts'" (click)="tab.set('texts')">Tekster</button>
       <button [class.active]="tab() === 'data'" (click)="tab.set('data')">Data &amp; eksport</button>
     </nav>
 
@@ -49,12 +50,12 @@
           <div class="stats">
             <div class="stat">
               <div class="stat-label">Høj overvågning</div>
-              <div class="stat-value">{{ o.counts.high.assigned }}</div>
+              <div class="stat-value">{{ o.counts.high.assigned }} <span class="stat-share">{{ share(o.counts.high.assigned) }}</span></div>
               <div class="stat-sub">{{ o.counts.high.completed }} færdige · {{ o.counts.high.inProgress }} i gang</div>
             </div>
             <div class="stat">
               <div class="stat-label">Lav overvågning</div>
-              <div class="stat-value">{{ o.counts.low.assigned }}</div>
+              <div class="stat-value">{{ o.counts.low.assigned }} <span class="stat-share">{{ share(o.counts.low.assigned) }}</span></div>
               <div class="stat-sub">{{ o.counts.low.completed }} færdige · {{ o.counts.low.inProgress }} i gang</div>
             </div>
             <div class="stat">
@@ -97,7 +98,7 @@
             <div class="table-wrap">
               <table class="table">
                 <thead>
-                  <tr><th>ID</th><th>Gruppe</th><th>Trin</th><th>Startet</th><th>Færdig</th><th class="num">AI-klik</th><th class="num">Rigtige</th></tr>
+                  <tr><th>ID</th><th>Gruppe</th><th>Trin</th><th>Startet</th><th>Færdig</th><th class="num">AI-klik</th><th class="num">Rigtige</th><th></th></tr>
                 </thead>
                 <tbody>
                   @for (p of o.participants; track p.code) {
@@ -113,9 +114,12 @@
                       <td>{{ p.finishedAt ? (p.finishedAt | date: 'HH:mm:ss') : '–' }}</td>
                       <td class="num">{{ p.aiClicks }}</td>
                       <td class="num">{{ p.correct }}</td>
+                      <td class="row-action">
+                        <button class="btn btn-ghost btn-sm danger" (click)="deleteParticipant(p)" [title]="'Slet ' + p.code">Slet</button>
+                      </td>
                     </tr>
                   } @empty {
-                    <tr><td colspan="7" class="muted">Ingen deltagere endnu.</td></tr>
+                    <tr><td colspan="8" class="muted">Ingen deltagere endnu.</td></tr>
                   }
                 </tbody>
               </table>
@@ -193,6 +197,47 @@
               </section>
             </div>
           }
+        }
+
+        @case ('texts') {
+          <section class="card">
+            <div class="row-between">
+              <h2>Tekster til deltagerne</h2>
+              <button class="btn btn-primary btn-sm" [disabled]="busy()" (click)="saveTexts()">Gem tekster</button>
+            </div>
+            <p class="muted small">
+              Ændringer slår igennem for nye sidevisninger med det samme. Linjeskift vises som linjeskift.
+              "Gendan standard" henter den oprindelige tekst. Opgaverne og AI-svarene rettes under "Spørgsmål".
+            </p>
+          </section>
+
+          @for (s of editableTexts; track s.section) {
+            <section class="card">
+              <h2>{{ s.section }}</h2>
+              @for (f of s.fields; track f.key) {
+                <div class="text-field">
+                  <div class="text-field-head">
+                    <label class="field-label" [for]="'txt-' + f.key">
+                      {{ f.label }}
+                      @if (isChanged(f.key)) { <span class="pill">ændret</span> }
+                    </label>
+                    @if (isChanged(f.key)) {
+                      <button class="link-btn" (click)="resetText(f.key)">Gendan standard</button>
+                    }
+                  </div>
+                  @if (f.multiline) {
+                    <textarea class="input" rows="6" [id]="'txt-' + f.key" [(ngModel)]="textDraft[f.key]"></textarea>
+                  } @else {
+                    <input class="input" [id]="'txt-' + f.key" [(ngModel)]="textDraft[f.key]" />
+                  }
+                </div>
+              }
+            </section>
+          }
+
+          <div class="actions">
+            <button class="btn btn-primary" [disabled]="busy()" (click)="saveTexts()">Gem tekster</button>
+          </div>
         }
 
         @case ('data') {

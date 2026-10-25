@@ -4,13 +4,13 @@ using Microsoft.EntityFrameworkCore;
 namespace AiExperiment.Api.Services;
 
 /// <summary>
-/// Blokrandomisering på serveren: i hver blok af 4 deltagere kommer præcis 2 i hver gruppe,
-/// i tilfældig rækkefølge. Så er grupperne aldrig mere end 2 fra hinanden i størrelse.
-/// Tilstanden udledes af databasen, så den overlever genstart af serveren.
+/// Balanceret fordeling på serveren: en ny deltager kommer i den gruppe, der har færrest,
+/// og ved lige mange trækkes der lod. Grupperne er derfor aldrig mere end 1 fra hinanden
+/// (svarer til blokrandomisering med blokke af 2). Tallene læses fra databasen hver gang,
+/// så det passer også efter genstart, og efter at admin har slettet deltagere.
 /// </summary>
 public sealed class Randomizer
 {
-    public const int BlockSize = 4;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public async Task AssignAsync(AppDb db, Participant p, CancellationToken ct)
@@ -24,22 +24,18 @@ public sealed class Randomizer
             return;
         }
 
-        // Én tildeling ad gangen, så to samtidige deltagere ikke "tager samme plads" i blokken.
+        // Én tildeling ad gangen, så to samtidige deltagere ikke begge ser "lige mange" og havner samme sted.
         await _gate.WaitAsync(ct);
         try
         {
-            var real = db.Participants.Where(x => !x.IsTest && x.AssignmentIndex != null);
-            var n = await real.CountAsync(ct);
-            var inBlock = n % BlockSize;
-            var current = await real.OrderByDescending(x => x.AssignmentIndex).Take(inBlock)
-                .Select(x => x.Group).ToListAsync(ct);
+            var real = db.Participants.Where(x => !x.IsTest && x.Group != null);
+            var high = await real.CountAsync(x => x.Group == Groups.High, ct);
+            var low = await real.CountAsync(x => x.Group == Groups.Low, ct);
 
-            var remHigh = BlockSize / 2 - current.Count(g => g == Groups.High);
-            var remLow = BlockSize / 2 - current.Count(g => g == Groups.Low);
-            if (remHigh + remLow <= 0) { remHigh = 1; remLow = 1; } // sikkerhedsnet, bør ikke ske
-
-            p.Group = Random.Shared.Next(remHigh + remLow) < remHigh ? Groups.High : Groups.Low;
-            p.AssignmentIndex = n + 1;
+            p.Group = high < low ? Groups.High
+                : low < high ? Groups.Low
+                : Random.Shared.Next(2) == 0 ? Groups.High : Groups.Low;
+            p.AssignmentIndex = (await real.MaxAsync(x => x.AssignmentIndex, ct) ?? 0) + 1;
             p.AssignedAt = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
         }

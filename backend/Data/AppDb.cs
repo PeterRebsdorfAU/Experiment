@@ -11,6 +11,17 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
     public DbSet<TaskResponse> TaskResponses => Set<TaskResponse>();
     public DbSet<EventLog> Events => Set<EventLog>();
     public DbSet<LotteryEntry> LotteryEntries => Set<LotteryEntry>();
+    public DbSet<TextSetting> TextSettings => Set<TextSetting>();
+
+    /// <summary>
+    /// EnsureCreated opretter kun tabeller i en tom database. Tabeller tilføjet senere oprettes her,
+    /// så en eksisterende database (Neon) opgraderes uden at miste data. SQL'en virker i både PostgreSQL og SQLite.
+    /// </summary>
+    public void UpgradeSchema()
+    {
+        Database.ExecuteSqlRaw(
+            """CREATE TABLE IF NOT EXISTS "TextSettings" ("Key" varchar(64) NOT NULL PRIMARY KEY, "Value" text NOT NULL)""");
+    }
 
     public override Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
@@ -53,6 +64,13 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
         });
 
         b.Entity<LotteryEntry>().Property(l => l.Email).HasMaxLength(200);
+
+        b.Entity<TextSetting>(e =>
+        {
+            e.ToTable("TextSettings");
+            e.HasKey(t => t.Key);
+            e.Property(t => t.Key).HasMaxLength(64);
+        });
 
         // Alle tidspunkter er UTC. SQLite glemmer "Kind" ved indlæsning, så vi sætter den igen –
         // ellers serialiseres tiderne uden "Z" og browseren tolker dem som lokal tid.

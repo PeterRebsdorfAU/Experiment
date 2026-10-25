@@ -2,6 +2,7 @@ import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Api } from './api';
+import { EDITABLE_TEXTS, TextStore } from './text-store';
 
 interface Settings {
   studyOpen: boolean;
@@ -44,7 +45,7 @@ export interface Question {
   aiAnswerValue: number | null;
 }
 
-type Tab = 'overview' | 'questions' | 'data';
+type Tab = 'overview' | 'questions' | 'texts' | 'data';
 
 const KEY_STORAGE = 'exp_admin_key';
 
@@ -64,6 +65,7 @@ const STEP_LABELS: Record<string, string | undefined> = {
 })
 export class Admin implements OnDestroy {
   private readonly api = inject(Api);
+  private readonly textStore = inject(TextStore);
 
   protected readonly key = signal<string | null>(this.loadKey());
   protected password = '';
@@ -78,6 +80,9 @@ export class Admin implements OnDestroy {
   protected resetConfirm = '';
   protected resetLottery = false;
   protected readonly stepLabels = STEP_LABELS;
+  protected readonly editableTexts = EDITABLE_TEXTS;
+  /** Tekstfelternes indhold på fanen "Tekster" (aktuel tekst = ændret eller standard). */
+  protected textDraft: Record<string, string> = {};
   private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
@@ -111,7 +116,7 @@ export class Admin implements OnDestroy {
   }
 
   private async loadAll(): Promise<void> {
-    await Promise.all([this.refresh(), this.loadQuestions()]);
+    await Promise.all([this.refresh(), this.loadQuestions(), this.loadTexts()]);
     this.timer ??= setInterval(() => void this.refresh(), 5000);
   }
 
@@ -196,6 +201,56 @@ export class Admin implements OnDestroy {
     [list[index], list[target]] = [list[target], list[index]];
     this.questions.set(list);
     await this.call('PUT', '/api/admin/questions/order', list.map((q) => q.id));
+  }
+
+  // ---------- Tekster ----------
+
+  private async loadTexts(): Promise<void> {
+    await this.textStore.load();
+    const draft: Record<string, string> = {};
+    for (const s of EDITABLE_TEXTS) for (const f of s.fields) draft[f.key] = this.textStore.valueFor(f.key);
+    this.textDraft = draft;
+  }
+
+  protected isChanged(key: string): boolean {
+    return this.textDraft[key] !== this.textStore.defaultFor(key);
+  }
+
+  protected resetText(key: string): void {
+    this.textDraft[key] = this.textStore.defaultFor(key);
+  }
+
+  protected async saveTexts(): Promise<void> {
+    // Kun ændrede tekster gemmes; tekster der er som standard sendes som null (= slet ændringen).
+    const body: Record<string, string | null> = {};
+    for (const [key, value] of Object.entries(this.textDraft)) {
+      body[key] = value.trim() && value !== this.textStore.defaultFor(key) ? value : null;
+    }
+    const res = await this.call<Record<string, string>>('PUT', '/api/admin/texts', body);
+    if (res.status === 200 && res.data) {
+      this.textStore.overrides.set(res.data);
+      await this.loadTexts();
+      this.flash('Teksterne er gemt. Nye sidevisninger bruger dem med det samme.');
+    } else {
+      alert('Kunne ikke gemme teksterne.');
+    }
+  }
+
+  // ---------- Deltagere ----------
+
+  protected async deleteParticipant(p: ParticipantRow): Promise<void> {
+    const status = p.finishedAt ? 'færdig' : 'IKKE færdig';
+    if (!confirm(`Slet deltager ${p.code} (${status})?\n\nSvar og hændelseslog slettes permanent. Kan ikke fortrydes.`)) return;
+    const res = await this.call('DELETE', `/api/admin/participants/${encodeURIComponent(p.code)}`);
+    if (res.status === 204) this.flash(`${p.code} er slettet.`);
+    await this.refresh();
+  }
+
+  /** Andel i procent af de fordelte (ikke-test) deltagere. */
+  protected share(n: number): string {
+    const c = this.overview()?.counts;
+    const total = (c?.high.assigned ?? 0) + (c?.low.assigned ?? 0);
+    return total ? `${Math.round((n / total) * 100)} %` : '–';
   }
 
   // ---------- Data ----------

@@ -117,6 +117,16 @@ public class EventLog
 }
 
 /// <summary>
+/// Tekster rettet på admin-siden (fx samtykke og instruktion). Kun ændrede tekster gemmes;
+/// resten tager standardteksten fra frontend/src/app/texts.ts.
+/// </summary>
+public class TextSetting
+{
+    public string Key { get; set; } = "";
+    public string Value { get; set; } = "";
+}
+
+/// <summary>
 /// E-mails til lodtrækningen. Bevidst UDEN kobling til deltageren og kun med dato (ikke klokkeslæt),
 /// så en e-mail ikke kan matches med et bestemt sæt svar.
 /// </summary>
