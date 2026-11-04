@@ -97,14 +97,18 @@ export class Admin implements OnDestroy {
 
   protected async login(): Promise<void> {
     this.loginError.set(null);
-    const res = await this.call<Overview>('GET', '/api/admin/overview', undefined, this.password);
+    const res = await this.call<Overview>('GET', '/api/admin/overview', undefined, this.password, 0);
     if (res.status === 200) {
       this.key.set(this.password);
       try { sessionStorage.setItem(KEY_STORAGE, this.password); } catch { /* ignore */ }
       this.password = '';
       await this.loadAll();
     } else {
-      this.loginError.set(res.status === 503 ? 'Admin-adgangskoden er ikke sat på serveren.' : 'Forkert adgangskode.');
+      this.loginError.set(
+        res.status === 503 ? 'Admin-adgangskoden er ikke sat på serveren.'
+          : res.status === 429 ? 'For mange forkerte forsøg. Login er spærret i 15 minutter.'
+          : 'Forkert adgangskode.',
+      );
     }
   }
 
@@ -289,10 +293,10 @@ export class Admin implements OnDestroy {
 
   // ---------- Hjælpere ----------
 
-  private async call<T = unknown>(method: string, url: string, body?: unknown, key = this.key() ?? '') {
+  private async call<T = unknown>(method: string, url: string, body?: unknown, key = this.key() ?? '', retries = 2) {
     this.busy.set(true);
     try {
-      const res = await this.api.request<T>(method, url, body, { 'X-Admin-Key': key }, 2);
+      const res = await this.api.request<T>(method, url, body, { 'X-Admin-Key': key }, retries);
       if (res.status === 401 && key === this.key()) this.logout();
       return res;
     } finally {

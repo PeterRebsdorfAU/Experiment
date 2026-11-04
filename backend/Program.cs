@@ -1,6 +1,7 @@
 using AiExperiment.Api.Data;
 using AiExperiment.Api.Endpoints;
 using AiExperiment.Api.Services;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,6 +15,33 @@ builder.Services.AddDbContext<AppDb>(o =>
     else o.UseSqlite("Data Source=experiment.db");
 });
 builder.Services.AddSingleton<Randomizer>();
+builder.Services.AddMemoryCache();
+
+// Begrænsning af antal forespørgsler pr. afsender, mod oversvømmelse og falske deltagere.
+// Grænserne er sat højt nok til, at en hel klasse bag samme netværk (samme IP) kan deltage samtidig.
+builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.OnRejected = (ctx, _) =>
+    {
+        ctx.HttpContext.Response.Headers.RetryAfter = "10";
+        return ValueTask.CompletedTask;
+    };
+    // Alle API-kald: højst 3000 pr. minut pr. afsender (≈ 50 aktive deltagere bag samme IP med god margin).
+    o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+        ctx.Request.Path.StartsWithSegments("/api")
+            ? RateLimitPartition.GetSlidingWindowLimiter(ClientKey.For(ctx), _ => new SlidingWindowRateLimiterOptions
+            {
+                PermitLimit = 3000, Window = TimeSpan.FromMinutes(1), SegmentsPerWindow = 6, QueueLimit = 0,
+            })
+            : RateLimitPartition.GetNoLimiter("static"));
+    // Nye deltagere: højst 150 pr. 5 minutter pr. afsender.
+    o.AddPolicy(RateLimits.CreateParticipant, ctx =>
+        RateLimitPartition.GetSlidingWindowLimiter(ClientKey.For(ctx), _ => new SlidingWindowRateLimiterOptions
+        {
+            PermitLimit = 150, Window = TimeSpan.FromMinutes(5), SegmentsPerWindow = 5, QueueLimit = 0,
+        }));
+});
 
 var app = builder.Build();
 
@@ -43,6 +71,8 @@ app.UseStaticFiles(new StaticFileOptions
         if (ctx.File.Name == "index.html") ctx.Context.Response.Headers.CacheControl = "no-cache";
     },
 });
+
+app.UseRateLimiter();
 
 app.MapGet("/healthz", () => Results.Ok("ok"));
 app.MapParticipantEndpoints();

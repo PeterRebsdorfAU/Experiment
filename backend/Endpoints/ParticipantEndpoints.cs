@@ -61,7 +61,7 @@ public static partial class ParticipantEndpoints
             Log(db, p, "consent_accepted");
             await db.SaveChangesAsync();
             return Results.Ok(await BuildStateAsync(db, p));
-        });
+        }).RequireRateLimiting(RateLimits.CreateParticipant);
 
         var one = api.MapGroup("/participants/{id:guid}");
 

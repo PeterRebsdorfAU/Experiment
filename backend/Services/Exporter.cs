@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using AiExperiment.Api.Data;
 using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
@@ -12,7 +13,7 @@ public record DataTable(string Name, string[] Headers, List<object?[]> Rows);
 /// Bygger eksport-tabellerne. Tidspunkter er dansk tid (Europe/Copenhagen).
 /// Lodtræknings-e-mails er en separat tabel og kan ikke kobles til deltagerne.
 /// </summary>
-public static class Exporter
+public static partial class Exporter
 {
     private static readonly TimeZoneInfo Dk = FindDk();
 
@@ -153,8 +154,19 @@ public static class Exporter
         DateTime d => d.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture),
         bool b => b ? "1" : "0",
         IFormattable f => f.ToString(null, CultureInfo.InvariantCulture),
-        _ => v.ToString() ?? "",
+        string s => NeutralizeFormula(s),
+        _ => NeutralizeFormula(v.ToString() ?? ""),
     };
+
+    /// <summary>
+    /// Beskyttelse mod CSV-injection: tekst, som Excel ellers ville tolke som en formel (starter med = + - @,
+    /// tab eller linjeskift), får et ' foran og vises derfor som almindelig tekst. Rene tal som "-5" røres ikke.
+    /// </summary>
+    private static string NeutralizeFormula(string s) =>
+        s.Length > 0 && "=+-@\t\r".Contains(s[0]) && !PlainNumber().IsMatch(s) ? "'" + s : s;
+
+    [GeneratedRegex(@"^-\d+([.,]\d+)*$")]
+    private static partial Regex PlainNumber();
 
     private static string Escape(string s) =>
         s.IndexOfAny([',', '"', '\n', '\r']) >= 0 ? $"\"{s.Replace("\"", "\"\"")}\"" : s;

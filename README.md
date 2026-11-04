@@ -83,6 +83,15 @@ Lokalt bruges filen `backend/experiment.db` (SQLite). Slet den for at starte hel
   Dobbeltklik og samtidige forespørgsler afvises på serveren (optimistisk låsning), så tællere ikke bliver forkerte.
 - Genindlæser en deltager siden, fortsætter de præcis hvor de var (samme opgave, REC-tælleren kører videre).
 
+### Sikkerhed
+
+- **Begrænsning af forespørgsler** pr. afsender: højst 3000 API-kald pr. minut og 150 nye deltagere pr. 5 minutter
+  (en hel klasse bag samme netværk kan deltage samtidig; testet med 50 samtidige forløb bag én IP).
+- **Admin-login spærres** i 15 minutter efter 10 forkerte forsøg fra samme afsender.
+- IP-adressen bruges kun midlertidigt i hukommelsen til disse tællinger og gemmes aldrig.
+- **CSV-eksport** er sikret mod CSV-injection: tekst, der starter med `=`, `+`, `-`, `@` (undtagen rene tal), får et `'` foran.
+- Ingen kendte sårbarheder i .NET-pakkerne eller i de npm-pakker, der indgår i den færdige side (`npm audit --omit=dev`).
+
 ### Bemærk ved ændringer i datamodellen
 
 Databasen oprettes med `EnsureCreated` (ingen migrationer). Ændrer du entiteterne i `backend/Data/Entities.cs`,

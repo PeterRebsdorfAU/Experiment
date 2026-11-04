@@ -4,12 +4,22 @@ using System.Text.RegularExpressions;
 using AiExperiment.Api.Data;
 using AiExperiment.Api.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace AiExperiment.Api.Endpoints;
 
 /// <summary>Admin-API. Kræver headeren X-Admin-Key = adgangskoden fra konfigurationen (Admin:Password).</summary>
 public static partial class AdminEndpoints
 {
+    private const int MaxLoginFailures = 10;
+    private static readonly TimeSpan LockoutWindow = TimeSpan.FromMinutes(15);
+
+    private sealed class FailCounter
+    {
+        public int Count;
+        public DateTime Expires;
+    }
+
     [GeneratedRegex(@"^[a-zA-Z][a-zA-Z.]{0,63}$")]
     private static partial Regex TextKeyRegex();
 
@@ -24,13 +34,31 @@ public static partial class AdminEndpoints
     {
         var admin = app.MapGroup("/api/admin").AddEndpointFilter(async (ctx, next) =>
         {
-            var password = ctx.HttpContext.RequestServices.GetRequiredService<IConfiguration>()["Admin:Password"];
+            var services = ctx.HttpContext.RequestServices;
+            var password = services.GetRequiredService<IConfiguration>()["Admin:Password"];
             if (string.IsNullOrWhiteSpace(password))
                 return Results.Problem("Admin-adgangskode er ikke sat på serveren (Admin__Password).", statusCode: 503);
+
+            // Spærring mod gætteri: efter 10 forkerte forsøg fra samme afsender afvises alt i 15 minutter,
+            // også en korrekt adgangskode. Tælleren ligger kun i hukommelsen.
+            var cache = services.GetRequiredService<IMemoryCache>();
+            var failKey = "admin-fail:" + ClientKey.For(ctx.HttpContext);
+            var failures = cache.Get<FailCounter>(failKey);
+            if (failures is { Count: >= MaxLoginFailures })
+            {
+                ctx.HttpContext.Response.Headers.RetryAfter = ((int)(failures.Expires - DateTime.UtcNow).TotalSeconds).ToString();
+                return Results.Problem("For mange forkerte forsøg. Prøv igen om 15 minutter.", statusCode: 429);
+            }
+
             var given = ctx.HttpContext.Request.Headers["X-Admin-Key"].ToString();
             var ok = CryptographicOperations.FixedTimeEquals(
                 SHA256.HashData(Encoding.UTF8.GetBytes(given)), SHA256.HashData(Encoding.UTF8.GetBytes(password)));
-            return ok ? await next(ctx) : Results.Unauthorized();
+            if (ok) return await next(ctx);
+
+            failures ??= new FailCounter { Expires = DateTime.UtcNow.Add(LockoutWindow) };
+            Interlocked.Increment(ref failures.Count);
+            cache.Set(failKey, failures, failures.Expires);
+            return Results.Unauthorized();
         });
 
         admin.MapGet("/overview", async (AppDb db) =>

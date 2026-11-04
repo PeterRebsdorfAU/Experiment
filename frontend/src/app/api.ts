@@ -49,6 +49,13 @@ export class Api {
           headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...headers },
           body: body !== undefined ? JSON.stringify(body) : undefined,
         });
+        if (res.status === 429 && attempt < retries) {
+          // Serveren beder os vente (begrænsning af antal forespørgsler). Vent og prøv igen.
+          this.retrying.set(true);
+          const after = Number(res.headers.get('Retry-After'));
+          await sleep(Math.min(15000, Number.isFinite(after) && after > 0 ? after * 1000 : 2000 * (attempt + 1)));
+          continue;
+        }
         if (res.status >= 500 && attempt < retries) throw new Error(`HTTP ${res.status}`);
         this.retrying.set(false);
         const text = await res.text();
